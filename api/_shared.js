@@ -138,7 +138,17 @@ async function parseBoard(name, path, since, until, kind) {
     if (!cells.length) continue;
 
     const dc = cells.find((c) => /^20\d{2}-\d{2}-\d{2}$/.test(c));
-    if (!dc || dc < since || dc > until) continue;
+    if (!dc) continue;
+
+    // 고시·채용 공고에는 「개재일」(공고가 살아 있는 기간)이 붙는다.
+    // 종료일이 앞으로 오는 건은 아직 챙겨야 할 일이므로, 올라온 날짜가
+    // 수집 기간 밖이어도 버리지 않고 남긴다.
+    const per = m[1].match(/(20\d{2}-\d{2}-\d{2})\s*~\s*(20\d{2}-\d{2}-\d{2})/);
+    const endsAt = per ? per[2] : null;
+
+    const posted = dc >= since && dc <= until;   // 최근 올라온 것인가
+    const openLater = endsAt !== null && endsAt >= until; // 아직 안 끝난 것인가
+    if (!posted && !openLater) continue;
 
     const cand = cells.filter((c) => /[가-힣]/.test(c) && !/^\d+$/.test(c));
     if (!cand.length) continue;
@@ -151,13 +161,14 @@ async function parseBoard(name, path, since, until, kind) {
 
     const tags = [...new Set(FLAGS.filter(([k]) => title.includes(k)).map(([, v]) => v))].sort();
     items.push({ board: name, date: dc, dept, title, tags,
+                 endsAt, posted,
                  link: rowLink(m[1], kind, path) });
   }
   return { name, items };
 }
 
 /** 기준일로부터 days일 전까지 수집 */
-async function collect(baseDate, days = 6) {
+async function collect(baseDate, days = 2) {
   const base = ymdToDate(baseDate);
   const since = new Date(base.getTime() - days * 86400000);
   const sinceStr = since.toISOString().slice(0, 10);

@@ -25,13 +25,48 @@ function row(it) {
 function buildBody(data, org) {
   const base = ymdToDate(data.baseDate);
   const since = ymdToDate(data.since);
-  const news = data.items.filter((i) => i.board !== "주간행사계획");
-  const plan = data.items.filter((i) => i.board === "주간행사계획");
+  // posted = 수집 기간 안에 올라온 것. 아직 안 끝나서 딸려 온 옛 공고는
+  // 「앞으로 챙길 일」에만 싣고 지난 동향 목록에는 넣지 않는다.
+  const news = data.items.filter((i) => i.board !== "주간행사계획" && i.posted !== false);
+  const plan = data.items.filter((i) => i.board === "주간행사계획" && i.posted !== false);
   // 1등급 = 1:1로 맞는 우리 건, 2등급 = 지역명만 겹치는 건. 섹션을 나눠 싣는다.
   const direct = org ? news.filter(function (i) { return matchTier(i, org) === 1; }) : [];
   const loose = org ? news.filter(function (i) { return matchTier(i, org) === 2; }) : [];
   const p = [];
   let n = 1;
+
+  // 앞으로 챙길 일 — 공고가 아직 살아 있는 것을 마감 가까운 순으로.
+  // 아침에 보는 문서라면 일주일 지난 소식보다 이게 먼저다.
+  const ahead = data.items
+    .filter(function (i) { return i.endsAt && i.endsAt >= data.baseDate; })
+    .sort(function (a, b) { return a.endsAt.localeCompare(b.endsAt); });
+
+  if (ahead.length) {
+    p.push("<h2>" + RN[n++] + '. 앞으로 챙길 일 <span class="en">(' +
+      ahead.length + "건 · 마감 가까운 순)</span></h2>");
+    p.push('<table class="t"><thead><tr><th style="width:13%">마감</th>' +
+      '<th style="width:13%">게시 부서</th><th>내 용</th>' +
+      '<th style="width:12%">' + (org ? "우리 관련" : "구 분") + "</th></tr></thead><tbody>");
+    ahead.forEach(function (it) {
+      const d = ymdToDate(it.endsAt);
+      const left = Math.round((d - ymdToDate(data.baseDate)) / 86400000);
+      const dd = left === 0 ? "오늘" : "D-" + left;
+      const cls = left <= 3 ? "ing" : left <= 7 ? "" : "wait";
+      const t = org ? matchTier(it, org) : 0;
+      const mark = t === 1 ? '<td class="c ing">해당</td>'
+        : t === 2 ? '<td class="c wait">인근</td>'
+        : '<td class="c">' + esc(it.board) + "</td>";
+      p.push('<tr><td class="c d"><b class="' + cls + '">' + dd + "</b><br>" +
+        '<small>' + shortDate(d) + "</small></td>" +
+        '<td class="c">' + esc(it.dept || it.board) + "</td>" +
+        "<td>" + (it.link
+          ? '<a href="' + esc(it.link) + '" target="_blank" rel="noopener">' + esc(it.title) + "</a>"
+          : esc(it.title)) + "</td>" + mark + "</tr>");
+    });
+    p.push("</tbody></table>");
+    p.push('<div class="note">※ 공고에 적힌 게재 종료일 기준입니다. ' +
+      "접수·신청 마감일과 다를 수 있으니 원문을 확인하세요.</div>");
+  }
 
   // 채워 넣을 자리(총괄 요약·주민생활·지역 현안·조치사항)는 두지 않는다.
   // 자동으로 채울 수 없는 칸이라 어느 부서로 열어도 늘 비어 있었고,
@@ -109,8 +144,8 @@ module.exports = async (req, res) => {
   const url = new URL(req.url, "http://x");
   const q = url.searchParams.get("date");
   const date = /^\d{4}-\d{2}-\d{2}$/.test(q || "") ? q : todayKST();
-  let days = parseInt(url.searchParams.get("days") || "6", 10);
-  if (!(days >= 0)) days = 6;
+  let days = parseInt(url.searchParams.get("days") || "2", 10);
+  if (!(days >= 0)) days = 2;
   days = Math.min(days, 30);
   const org = (url.searchParams.get("org") || "").trim().slice(0, 20);
 

@@ -288,8 +288,8 @@
           <div class="f">
             <label for="days">읽어 올 기간</label>
             <select id="days">
-              <option value="2">최근 3일</option>
-              <option value="6" selected>최근 7일</option>
+              <option value="2" selected>최근 3일</option>
+              <option value="6">최근 7일</option>
               <option value="13">최근 14일</option>
               <option value="29">최근 30일</option>
             </select>
@@ -550,7 +550,7 @@
     try { if (org) localStorage.setItem('seogu-org', org); } catch (e) {}
 
     var url = '/api/report?date=' + encodeURIComponent(dateEl.value || today) +
-              '&days=' + encodeURIComponent(daysEl.value || '6') +
+              '&days=' + encodeURIComponent(daysEl.value || '2') +
               (org ? '&org=' + encodeURIComponent(org) : '');
 
     goEl.disabled = true;
