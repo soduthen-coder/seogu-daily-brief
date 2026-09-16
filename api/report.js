@@ -6,7 +6,6 @@ const { isRelevant, matchTier, reason } = require("./_org");
 const { STYLE } = require("./_style");
 
 const EDIT = '<span contenteditable="true" style="color:var(--warn)">□ 확인</span>';
-const RN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ", "Ⅷ"];
 
 // linked=false 면 제목만 싣는다. 이미 지난 일은 원문을 열 일이 드물어
 // 링크가 줄줄이 붙으면 정작 눌러야 할 앞으로의 건이 묻힌다.
@@ -23,6 +22,14 @@ function row(it, linked) {
   );
 }
 
+/** 마감이 앞으로 남았으면 D-day 를 붙인다. 없으면 빈 문자열. */
+function dday(it, data) {
+  if (!it.endsAt || it.endsAt < data.baseDate) return "";
+  const left = Math.round((ymdToDate(it.endsAt) - ymdToDate(data.baseDate)) / 86400000);
+  const label = left === 0 ? "오늘 마감" : "D-" + left;
+  return '<b class="' + (left <= 3 ? "ing" : "wait") + '">' + label + "</b><br>";
+}
+
 function buildBody(data, org) {
   const base = ymdToDate(data.baseDate);
   const since = ymdToDate(data.since);
@@ -31,20 +38,66 @@ function buildBody(data, org) {
   const news = data.items.filter((i) => i.board !== "주간행사계획" && i.posted !== false);
   // 주간행사계획은 지난 주·이번 주·다음 주가 모두 쓸모 있으므로 posted 로 거르지 않는다.
   const plan = data.items.filter((i) => i.board === "주간행사계획");
-  // 1등급 = 1:1로 맞는 우리 건, 2등급 = 지역명만 겹치는 건. 섹션을 나눠 싣는다.
-  const direct = org ? news.filter(function (i) { return matchTier(i, org) === 1; }) : [];
-  const loose = org ? news.filter(function (i) { return matchTier(i, org) === 2; }) : [];
-  const p = [];
-  let n = 1;
-
-  // 앞으로 챙길 일 — 공고가 아직 살아 있는 것을 마감 가까운 순으로.
-  // 아침에 보는 문서라면 일주일 지난 소식보다 이게 먼저다.
-  const ahead = data.items
+  // 앞으로 마감되는 건 (보는 기간 안)
+  const aheadAll = data.items
     .filter(function (i) { return i.endsAt && i.endsAt >= data.baseDate; })
     .sort(function (a, b) { return a.endsAt.localeCompare(b.endsAt); });
 
+  // 우리 것은 '최근 올라온 것'과 '앞으로 마감될 것'을 한데 모아 맨 앞에 싣는다.
+  // 우리 부서 마감 건이 구 전체 목록에 섞여 버리면 찾을 수가 없다.
+  // 1등급 = 1:1로 맞는 우리 건, 2등급 = 지역명만 겹치는 건.
+  const seen = new Set();
+  function pick(arr, tier) {
+    return arr.filter(function (i) {
+      if (matchTier(i, org) !== tier) return false;
+      const k = (i.link || "") + i.title;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+  const direct = org ? pick(aheadAll, 1).concat(pick(news, 1)) : [];
+  const loose = org ? pick(aheadAll, 2).concat(pick(news, 2)) : [];
+  // 위에서 이미 실은 우리 건은 아래 구 전체 목록에서 뺀다
+  const ahead = aheadAll.filter(function (i) { return !org || matchTier(i, org) === 0; });
+  const p = [];
+  let n = 1;
+
+  // 채워 넣을 자리(총괄 요약·주민생활·지역 현안·조치사항)는 두지 않는다.
+  // 자동으로 채울 수 없는 칸이라 어느 부서로 열어도 늘 비어 있었고,
+  // 빈 표가 앞뒤로 붙으면 정작 내용이 있는 표를 안 보게 된다.
+  // 이 문서는 "모아 온 것"만 싣고, 판단은 사람이 따로 쓴다.
+
+  // 우리 소속 사항 — 1:1로 맞는 건만. 맨 앞에 두어야 파악이 빠르다.
+  if (org) {
+    p.push("<h2>" + (n++) + ". " + esc(org) + ' 사항 <span class="en">(' + direct.length + "건 · 먼저 확인)</span></h2>");
+    p.push('<table class="t"><thead><tr><th style="width:11%">일 자</th><th style="width:13%">게시 부서</th><th>내 용</th><th style="width:13%">걸린 사유</th></tr></thead><tbody>');
+    if (!direct.length) {
+      p.push('<tr><td colspan="4" class="c wait">해당 없음 — 수집 기간 중 ' + esc(org) + " 건 없음</td></tr>");
+    } else {
+      direct.forEach(function (it) {
+        p.push("<tr>" + row(it) + '<td class="c ing">' + dday(it, data) +
+          esc(reason(it, org)) + "</td></tr>");
+      });
+    }
+    p.push("</tbody></table>");
+  }
+
+  // 인근·유사 이름 — 우리 건은 아니지만 지역이 겹쳐 참고할 것. 있을 때만 만든다.
+  if (loose.length) {
+    p.push("<h2>" + (n++) + '. 인근 · 유사 명칭 참고 사항 <span class="en">(' + loose.length + "건 · " + esc(org) + " 건 아님)</span></h2>");
+    p.push('<table class="t"><thead><tr><th style="width:11%">일 자</th><th style="width:13%">게시 부서</th><th>내 용</th><th style="width:13%">겹치는 부분</th></tr></thead><tbody>');
+    loose.forEach(function (it) {
+      p.push("<tr>" + row(it) + '<td class="c wait">' + esc(reason(it, org)) + "</td></tr>");
+    });
+    p.push("</tbody></table>");
+    p.push('<div class="note">※ 지역명이 겹쳐 딸려 온 항목입니다. ' + esc(org) +
+      " 소관이 아니므로 참고만 하십시오.</div>");
+  }
+
+  // 구 전체에서 앞으로 마감될 일. 우리 건은 위에 실었으므로 여기엔 없다.
   if (ahead.length) {
-    p.push("<h2>" + RN[n++] + '. 앞으로 챙길 일 <span class="en">(' +
+    p.push("<h2>" + (n++) + '. 구 전체 · 앞으로 마감 <span class="en">(' +
       ahead.length + "건 · 마감 가까운 순)</span></h2>");
     p.push('<table class="t"><thead><tr><th style="width:13%">마감</th>' +
       '<th style="width:13%">게시 부서</th><th>내 용</th>' +
@@ -70,39 +123,9 @@ function buildBody(data, org) {
       "접수·신청 마감일과 다를 수 있으니 원문을 확인하세요.</div>");
   }
 
-  // 채워 넣을 자리(총괄 요약·주민생활·지역 현안·조치사항)는 두지 않는다.
-  // 자동으로 채울 수 없는 칸이라 어느 부서로 열어도 늘 비어 있었고,
-  // 빈 표가 앞뒤로 붙으면 정작 내용이 있는 표를 안 보게 된다.
-  // 이 문서는 "모아 온 것"만 싣고, 판단은 사람이 따로 쓴다.
-
-  // 우리 소속 사항 — 1:1로 맞는 건만. 맨 앞에 두어야 파악이 빠르다.
-  if (org) {
-    p.push("<h2>" + RN[n++] + ". " + esc(org) + ' 사항 <span class="en">(' + direct.length + "건 · 먼저 확인)</span></h2>");
-    p.push('<table class="t"><thead><tr><th style="width:11%">일 자</th><th style="width:13%">게시 부서</th><th>내 용</th><th style="width:13%">걸린 사유</th></tr></thead><tbody>');
-    if (!direct.length) {
-      p.push('<tr><td colspan="4" class="c wait">해당 없음 — 수집 기간 중 ' + esc(org) + " 건 없음</td></tr>");
-    } else {
-      direct.forEach(function (it) {
-        p.push("<tr>" + row(it) + '<td class="c ing">' + esc(reason(it, org)) + "</td></tr>");
-      });
-    }
-    p.push("</tbody></table>");
-  }
-
-  // 인근·유사 이름 — 우리 건은 아니지만 지역이 겹쳐 참고할 것. 있을 때만 만든다.
-  if (loose.length) {
-    p.push("<h2>" + RN[n++] + '. 인근 · 유사 명칭 참고 사항 <span class="en">(' + loose.length + "건 · " + esc(org) + " 건 아님)</span></h2>");
-    p.push('<table class="t"><thead><tr><th style="width:11%">일 자</th><th style="width:13%">게시 부서</th><th>내 용</th><th style="width:13%">겹치는 부분</th></tr></thead><tbody>');
-    loose.forEach(function (it) {
-      p.push("<tr>" + row(it) + '<td class="c wait">' + esc(reason(it, org)) + "</td></tr>");
-    });
-    p.push("</tbody></table>");
-    p.push('<div class="note">※ 지역명이 겹쳐 딸려 온 항목입니다. ' + esc(org) +
-      " 소관이 아니므로 참고만 하십시오.</div>");
-  }
 
   // 구정 주요 동향 (전체, 최신순)
-  p.push("<h2>" + RN[n++] + '. 구정 주요 동향 <span class="en">(' + kdate(since) + " ~ " + kdate(base) + " · 최신순 " + news.length + "건)</span></h2>");
+  p.push("<h2>" + (n++) + '. 구정 주요 동향 <span class="en">(' + kdate(since) + " ~ " + kdate(base) + " · 최신순 " + news.length + "건)</span></h2>");
   p.push('<table class="t"><thead><tr><th style="width:11%">일 자</th><th style="width:13%">게시 부서</th><th>내 용</th><th style="width:13%">' + (org ? "우리 관련" : "소관 여부") + "</th></tr></thead><tbody>");
   if (!news.length) p.push('<tr><td colspan="4" class="c">수집 기간 중 신규 게시물 없음</td></tr>');
   news.forEach((it) => {
@@ -120,7 +143,7 @@ function buildBody(data, org) {
   // 구 주간행사계획 — 지난 주와 앞으로의 주가 섞여 나오므로 어느 주인지 밝히고,
   // 내용이 파일 안에 있으니 내려받기 단추를 눈에 띄게 둔다.
   if (plan.length) {
-    p.push("<h2>" + RN[n++] + '. 구 주간행사계획 <span class="en">(' + plan.length + "건)</span></h2>");
+    p.push("<h2>" + (n++) + '. 구 주간행사계획 <span class="en">(' + plan.length + "건)</span></h2>");
     p.push('<table class="t"><thead><tr><th style="width:24%">주 간</th>' +
       '<th style="width:12%">구 분</th><th>내려받기</th></tr></thead><tbody>');
     plan
