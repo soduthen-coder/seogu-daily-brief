@@ -202,8 +202,8 @@
     <h1>게시판 훑는 30분을<br>10초로 줄입니다</h1>
 
     <p class="lede">
-      서구청 게시판 다섯 곳을 최근 일주일치 읽어, <b>우리 소속 건만 맨 앞에</b> 모아
-      A4 한 장으로 만듭니다. 제목을 누르면 원문으로 바로 갑니다.
+      서구청 게시판 다섯 곳을 훑어 <b>앞으로 마감될 일부터</b> 앞에 세우고,
+      우리 소속 건을 따로 모아 A4 한 장으로 만듭니다.
     </p>
 
     <div class="chips">
@@ -286,12 +286,10 @@
             <input type="date" id="date">
           </div>
           <div class="f">
-            <label for="days">읽어 올 기간</label>
-            <select id="days">
-              <option value="2" selected>최근 3일</option>
-              <option value="6">최근 7일</option>
-              <option value="13">최근 14일</option>
-              <option value="29">최근 30일</option>
+            <label for="span">보는 기간</label>
+            <select id="span">
+              <option value="3,7" selected>10일 — 지난 3일 + 앞으로 7일</option>
+              <option value="7,13">20일 — 지난 7일 + 앞으로 13일</option>
             </select>
           </div>
           <button class="go" id="go">보고서 만들기</button>
@@ -520,7 +518,7 @@
 <script>
   var orgEl = document.getElementById('org');
   var dateEl = document.getElementById('date');
-  var daysEl = document.getElementById('days');
+  var spanEl = document.getElementById('span');
   var goEl = document.getElementById('go');
   var workEl = document.getElementById('working');
 
@@ -549,8 +547,9 @@
     var org = orgEl.value;
     try { if (org) localStorage.setItem('seogu-org', org); } catch (e) {}
 
+    var sp = (spanEl.value || '3,7').split(',');
     var url = '/api/report?date=' + encodeURIComponent(dateEl.value || today) +
-              '&days=' + encodeURIComponent(daysEl.value || '2') +
+              '&back=' + encodeURIComponent(sp[0]) + '&ahead=' + encodeURIComponent(sp[1]) +
               (org ? '&org=' + encodeURIComponent(org) : '');
 
     goEl.disabled = true;

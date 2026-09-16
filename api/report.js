@@ -8,10 +8,11 @@ const { STYLE } = require("./_style");
 const EDIT = '<span contenteditable="true" style="color:var(--warn)">□ 확인</span>';
 const RN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ", "Ⅷ"];
 
-function row(it) {
+// linked=false 면 제목만 싣는다. 이미 지난 일은 원문을 열 일이 드물어
+// 링크가 줄줄이 붙으면 정작 눌러야 할 앞으로의 건이 묻힌다.
+function row(it, linked) {
   const tag = it.tags.length ? ' <small>[' + it.tags.join("·") + "]</small>" : "";
-  // 제목이 곧 원문 링크다. 제목만 보고 다시 게시판을 뒤지게 만들면 일을 두 번 시키는 셈이다.
-  const t = it.link
+  const t = (linked !== false && it.link)
     ? '<a href="' + esc(it.link) + '" target="_blank" rel="noopener">' + esc(it.title) + "</a>"
     : esc(it.title);
   const file = it.board === "주간행사계획" ? ' <small>(첨부파일 내려받기)</small>' : "";
@@ -28,7 +29,8 @@ function buildBody(data, org) {
   // posted = 수집 기간 안에 올라온 것. 아직 안 끝나서 딸려 온 옛 공고는
   // 「앞으로 챙길 일」에만 싣고 지난 동향 목록에는 넣지 않는다.
   const news = data.items.filter((i) => i.board !== "주간행사계획" && i.posted !== false);
-  const plan = data.items.filter((i) => i.board === "주간행사계획" && i.posted !== false);
+  // 주간행사계획은 지난 주·이번 주·다음 주가 모두 쓸모 있으므로 posted 로 거르지 않는다.
+  const plan = data.items.filter((i) => i.board === "주간행사계획");
   // 1등급 = 1:1로 맞는 우리 건, 2등급 = 지역명만 겹치는 건. 섹션을 나눠 싣는다.
   const direct = org ? news.filter(function (i) { return matchTier(i, org) === 1; }) : [];
   const loose = org ? news.filter(function (i) { return matchTier(i, org) === 2; }) : [];
@@ -110,23 +112,38 @@ function buildBody(data, org) {
     const mark = t === 1 ? '<td class="c ing">해당</td>'
       : t === 2 ? '<td class="c wait">인근</td>'
       : '<td class="c">' + EDIT + "</td>";
-    p.push("<tr>" + row(it) + mark + "</tr>");
+    p.push("<tr>" + row(it, false) + mark + "</tr>");
   });
   p.push("</tbody></table>");
-  p.push('<div class="note">※ 제목을 누르면 서구청 원문으로 갑니다. 「게시 부서」는 게시 주체, 대괄호는 제목 기준 자동 분류입니다. 날짜는 가까운 날부터 먼 날 순입니다.</div>');
+  p.push('<div class="note">※ 이미 지난 건이라 제목만 싣습니다. 원문이 필요하면 위 「앞으로 챙길 일」에서 누르시거나 구 홈페이지에서 찾으세요. 날짜는 가까운 날부터 먼 날 순입니다.</div>');
 
-  // 구 주간행사계획
+  // 구 주간행사계획 — 지난 주와 앞으로의 주가 섞여 나오므로 어느 주인지 밝히고,
+  // 내용이 파일 안에 있으니 내려받기 단추를 눈에 띄게 둔다.
   if (plan.length) {
-    p.push("<h2>" + RN[n++] + ". 구 주간행사계획</h2>");
-    p.push('<table class="t"><tbody>');
-    plan.forEach((it) => {
-      const a = it.link ? '<a href="' + esc(it.link) + '" target="_blank" rel="noopener">' + esc(it.title) + "</a>" : esc(it.title);
-      // 다른 표와 같은 날짜 형식으로. ISO 날짜를 좁은 칸에 넣으면 두 줄로 깨진다.
-      p.push('<tr><td class="c d" style="width:13%">' + shortDate(ymdToDate(it.date)) +
-             "</td><td>" + a + ' <small>(첨부파일 내려받기)</small></td></tr>');
-    });
+    p.push("<h2>" + RN[n++] + '. 구 주간행사계획 <span class="en">(' + plan.length + "건)</span></h2>");
+    p.push('<table class="t"><thead><tr><th style="width:24%">주 간</th>' +
+      '<th style="width:12%">구 분</th><th>내려받기</th></tr></thead><tbody>');
+    plan
+      .slice()
+      .sort(function (a, b) { return (b.span ? b.span[0] : b.date).localeCompare(a.span ? a.span[0] : a.date); })
+      .forEach(function (it) {
+        const s0 = it.span ? it.span[0] : it.date;
+        const s1 = it.span ? it.span[1] : it.date;
+        const when = s0 > data.baseDate ? ["앞으로", "ing"]
+          : s1 < data.baseDate ? ["지난 주", "wait"]
+          : ["이번 주", "ing"];
+        const span = it.span
+          ? shortDate(ymdToDate(s0)) + " ~ " + shortDate(ymdToDate(s1))
+          : shortDate(ymdToDate(it.date));
+        p.push('<tr><td class="c d">' + span + "</td>" +
+          '<td class="c ' + when[1] + '">' + when[0] + "</td><td>" +
+          (it.link
+            ? '<a href="' + esc(it.link) + '" target="_blank" rel="noopener"><b>한글 파일 내려받기</b></a>' +
+              ' <small>' + esc(it.title) + "</small>"
+            : esc(it.title)) + "</td></tr>");
+      });
     p.push("</tbody></table>");
-    p.push('<div class="note">※ 제목을 누르면 한글 파일이 바로 내려받아집니다. 파일 안의 일정은 자동으로 읽지 못하니 열어서 확인하세요.</div>');
+    p.push('<div class="note">※ 행사 일정은 첨부파일 안에 있습니다. 내려받아 열어 보셔야 합니다.</div>');
   }
 
   if (data.failed.length) {
@@ -144,14 +161,17 @@ module.exports = async (req, res) => {
   const url = new URL(req.url, "http://x");
   const q = url.searchParams.get("date");
   const date = /^\d{4}-\d{2}-\d{2}$/.test(q || "") ? q : todayKST();
-  let days = parseInt(url.searchParams.get("days") || "2", 10);
-  if (!(days >= 0)) days = 2;
-  days = Math.min(days, 30);
+  let back = parseInt(url.searchParams.get("back") || "3", 10);
+  let ahead = parseInt(url.searchParams.get("ahead") || "7", 10);
+  if (!(back >= 0)) back = 3;
+  if (!(ahead >= 0)) ahead = 7;
+  back = Math.min(back, 30);
+  ahead = Math.min(ahead, 60);
   const org = (url.searchParams.get("org") || "").trim().slice(0, 20);
 
   let data;
   try {
-    data = await collect(date, days);
+    data = await collect(date, back, ahead);
   } catch (e) {
     res.statusCode = 502;
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -177,7 +197,8 @@ module.exports = async (req, res) => {
     '  <button onclick="window.print()">인쇄 / PDF 저장</button>\n</div>\n' +
     '<div class="page">\n  <h1 class="doc-title">' + head + "</h1>\n" +
     '  <div class="doc-sub">기준일 : ' + esc(kdate(base)) +
-    " &nbsp;|&nbsp; 수집기간 : " + esc(kdate(since)) + " ~ " + esc(kdate(base)) +
+    " &nbsp;|&nbsp; 보는 기간 : " + esc(kdate(since)) + " ~ " + esc(kdate(ymdToDate(data.aheadUntil))) +
+    " (지난 " + data.back + "일 + 앞으로 " + data.ahead + "일)" +
     " &nbsp;|&nbsp; 보고일 : " + esc(kdate(base)) + "</div>\n" +
     '  <hr class="rule">\n  ' + buildBody(data, org) + "\n</div>\n</body>\n</html>";
 
