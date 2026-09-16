@@ -16,7 +16,7 @@ function row(it) {
     : esc(it.title);
   const file = it.board === "주간행사계획" ? ' <small>(첨부파일 내려받기)</small>' : "";
   return (
-    '<td class="c">' + shortDate(ymdToDate(it.date)) + "</td>" +
+    '<td class="c d">' + shortDate(ymdToDate(it.date)) + "</td>" +
     '<td class="c">' + esc(it.dept || it.board) + "</td>" +
     "<td>" + t + file + tag + "</td>"
   );
@@ -69,8 +69,11 @@ function buildBody(data, org) {
   p.push('<table class="t"><thead><tr><th style="width:11%">일 자</th><th style="width:13%">게시 부서</th><th>내 용</th><th style="width:13%">' + (org ? "우리 관련" : "소관 여부") + "</th></tr></thead><tbody>");
   if (!news.length) p.push('<tr><td colspan="4" class="c">수집 기간 중 신규 게시물 없음</td></tr>');
   news.forEach((it) => {
-    const mark = org && isRelevant(it, org)
-      ? '<td class="c ing">해당</td>'
+    // 전체 목록에서도 Ⅰ·Ⅱ와 같은 기준으로 표시한다.
+    // 지역명만 겹치는 건을 '해당'이라 하면 우리 일인 줄 알고 챙기게 된다.
+    const t = org ? matchTier(it, org) : 0;
+    const mark = t === 1 ? '<td class="c ing">해당</td>'
+      : t === 2 ? '<td class="c wait">인근</td>'
       : '<td class="c">' + EDIT + "</td>";
     p.push("<tr>" + row(it) + mark + "</tr>");
   });
@@ -83,7 +86,9 @@ function buildBody(data, org) {
     p.push('<table class="t"><tbody>');
     plan.forEach((it) => {
       const a = it.link ? '<a href="' + esc(it.link) + '" target="_blank" rel="noopener">' + esc(it.title) + "</a>" : esc(it.title);
-      p.push('<tr><td class="c" style="width:13%">' + it.date + "</td><td>" + a + ' <small>(첨부파일 내려받기)</small></td></tr>');
+      // 다른 표와 같은 날짜 형식으로. ISO 날짜를 좁은 칸에 넣으면 두 줄로 깨진다.
+      p.push('<tr><td class="c d" style="width:13%">' + shortDate(ymdToDate(it.date)) +
+             "</td><td>" + a + ' <small>(첨부파일 내려받기)</small></td></tr>');
     });
     p.push("</tbody></table>");
     p.push('<div class="note">※ 제목을 누르면 한글 파일이 바로 내려받아집니다. 파일 안의 일정은 자동으로 읽지 못하니 열어서 확인하세요.</div>');

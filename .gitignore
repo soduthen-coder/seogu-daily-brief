@@ -5,3 +5,5 @@ Thumbs.db
 
 # 로컬 미리보기 설정 — 개인 경로가 들어가므로 올리지 않는다
 .claude/
+
+.vercel

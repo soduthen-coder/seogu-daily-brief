@@ -50,6 +50,8 @@ const STYLE = `
   table.t th { background:var(--ink-50); font-weight:600; text-align:center; white-space:nowrap; color:var(--ink-700); }
   table.t thead th { background:var(--ink-100); color:var(--ink-800); }
   table.t td.c { text-align:center; }
+  /* 날짜 칸은 좁아도 한 줄로 */
+  table.t td.d { white-space:nowrap; }
   table.t tbody tr:hover { background:var(--accent-50); }
   table.t small { color:var(--ink-400); font-size:8.5pt; }
   table.t a {
